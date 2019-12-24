@@ -46,12 +46,7 @@ func NewTestCommand() *cobra.Command {
 				}
 				workers = append(workers, t)
 				go func(worker *test.TestWorker) {
-					e := worker.Run(operationCount / concurrency)
-					if e != nil {
-						errCh <- e
-						return
-					}
-					errCh <- nil
+					errCh <- worker.Run(operationCount / concurrency)
 				}(t)
 			}
 			defer func() {
@@ -59,7 +54,8 @@ func NewTestCommand() *cobra.Command {
 					_ = worker.Close()
 				}
 			}()
-			for err = range errCh {
+			for i := 0; i < concurrency; i++ {
+				err = <-errCh
 				if err != nil {
 					return err
 				}
@@ -70,7 +66,7 @@ func NewTestCommand() *cobra.Command {
 
 	cmd.Flags().IntP("concurrency", "c", 200, "the concurrency of client connections")
 
-	cmd.Flags().IntP("operationcount", "p", 10000, "the total number of requests")
+	cmd.Flags().IntP("operationcount", "p", 100000, "the total number of requests")
 
 	cmd.Flags().StringP("dsn", "d", "",
 		"the data source name of tidb, eg. username:password@protocol(address)/dbname?param=value")
