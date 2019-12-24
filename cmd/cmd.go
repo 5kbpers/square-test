@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/5kbpers/square-test/pkg/test"
+	"github.com/5kbpers/test1/pkg/test"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ func NewTestCommand() *cobra.Command {
 			}
 			ctx := context.Background()
 			errCh := make(chan error, concurrency)
-			workers := make([]*test.SquareTestWorker, 0, concurrency)
+			workers := make([]*test.TestWorker, 0, concurrency)
 			for i := 0; i < concurrency; i++ {
 				conn, err := db.GetConn(ctx)
 				if err != nil {
@@ -45,7 +45,7 @@ func NewTestCommand() *cobra.Command {
 					return err
 				}
 				workers = append(workers, t)
-				go func(worker *test.SquareTestWorker) {
+				go func(worker *test.TestWorker) {
 					e := worker.Run(operationCount / concurrency)
 					if e != nil {
 						errCh <- e

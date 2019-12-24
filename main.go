@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/5kbpers/square-test/cmd"
+	"github.com/5kbpers/test1/cmd"
 	"github.com/pingcap/errors"
 )
 

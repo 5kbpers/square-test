@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type SquareTestWorker struct {
+type TestWorker struct {
 	workerID       int
 	nextCustomerID uint64
 	conn           *Conn
@@ -19,8 +19,8 @@ type SquareTestWorker struct {
 	ctx            context.Context
 }
 
-func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string) (*SquareTestWorker, error) {
-	return &SquareTestWorker{
+func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string) (*TestWorker, error) {
+	return &TestWorker{
 		ctx:      ctx,
 		workerID: workerID,
 		conn:     conn,
@@ -28,7 +28,7 @@ func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn stri
 	}, nil
 }
 
-func (t *SquareTestWorker) Run(operationCount int) error {
+func (t *TestWorker) Run(operationCount int) error {
 	t.nextCustomerID = uint64(t.workerID * operationCount * 50)
 	err := withRetry(t.request1, 10)
 	if err != nil {
@@ -54,11 +54,11 @@ func (t *SquareTestWorker) Run(operationCount int) error {
 	return nil
 }
 
-func (t *SquareTestWorker) Close() error {
+func (t *TestWorker) Close() error {
 	return t.conn.Close()
 }
 
-func (t *SquareTestWorker) request1() error {
+func (t *TestWorker) request1() error {
 	log.Info("Run request1", zap.Int("workerID", t.workerID))
 	for i := 0; i < 50; i++ {
 		id := t.nextCustomerID
@@ -72,7 +72,7 @@ func (t *SquareTestWorker) request1() error {
 	return nil
 }
 
-func (t *SquareTestWorker) request2() error {
+func (t *TestWorker) request2() error {
 	log.Info("Run request2", zap.Int("workerID", t.workerID))
 	for i := 0; i < 10; i++ {
 		var customerID, counterpartyID uint64
@@ -100,7 +100,7 @@ func (t *SquareTestWorker) request2() error {
 	return nil
 }
 
-func (t *SquareTestWorker) request3() error {
+func (t *TestWorker) request3() error {
 	log.Info("Run request3", zap.Int("workerID", t.workerID))
 	for i := 0; i < 50; i++ {
 		var customerID, counterpartyID uint64
@@ -120,7 +120,7 @@ func (t *SquareTestWorker) request3() error {
 	return nil
 }
 
-func (t *SquareTestWorker) request4() error {
+func (t *TestWorker) request4() error {
 	log.Info("Run request4", zap.Int("workerID", t.workerID))
 	err := t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
 	if err != nil {
@@ -134,7 +134,7 @@ func (t *SquareTestWorker) request4() error {
 	return errors.Trace(err)
 }
 
-func (t *SquareTestWorker) getRandomCustomerID() uint64 {
+func (t *TestWorker) getRandomCustomerID() uint64 {
 	return t.numGen.Uint64() % t.nextCustomerID
 }
 

@@ -1,4 +1,4 @@
-module github.com/5kbpers/square-test
+module github.com/5kbpers/test1
 
 go 1.13
 
