@@ -20,6 +20,10 @@ func NewTestCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			followerRead, err := command.Flags().GetBool("followerread")
+			if err != nil {
+				return err
+			}
 			dsn, err := command.Flags().GetString("dsn")
 			if err != nil {
 				return err
@@ -40,7 +44,7 @@ func NewTestCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				t, err := test.NewSquareTestWorker(ctx, conn, i, dsn)
+				t, err := test.NewTestWorker(ctx, conn, i, dsn, followerRead)
 				if err != nil {
 					return err
 				}
@@ -66,7 +70,9 @@ func NewTestCommand() *cobra.Command {
 
 	cmd.Flags().IntP("concurrency", "c", 200, "the concurrency of client connections")
 
-	cmd.Flags().IntP("operationcount", "p", 100000, "the total number of requests")
+	cmd.Flags().IntP("operationcount", "p", 10000, "the total number of requests")
+
+	cmd.Flags().BoolP("followerread", "f", false, "enable follower read")
 
 	cmd.Flags().StringP("dsn", "d", "",
 		"the data source name of tidb, eg. username:password@protocol(address)/dbname?param=value")

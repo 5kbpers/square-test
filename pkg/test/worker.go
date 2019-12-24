@@ -18,14 +18,16 @@ type TestWorker struct {
 	numGen         *rand.Rand
 	ctx            context.Context
 	opCount        int
+	followerRead   bool
 }
 
-func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string) (*TestWorker, error) {
+func NewTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string, followerRead bool) (*TestWorker, error) {
 	return &TestWorker{
 		ctx:      ctx,
 		workerID: workerID,
 		conn:     conn,
 		numGen:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		followerRead: followerRead,
 	}, nil
 }
 
@@ -124,16 +126,24 @@ func (t *TestWorker) request3() error {
 
 func (t *TestWorker) request4() error {
 	log.Info("Run request4", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
-	err := t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
-	if err != nil {
-		return errors.Trace(err)
+	var err error
+	if t.followerRead {
+		err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
+		if err != nil {
+			return errors.Trace(err)
+		}
 	}
 	err = t.conn.execQuery(t.ctx, QueryAllMovementsSQL)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='leader'")
-	return errors.Trace(err)
+	if t.followerRead {
+		err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='leader'")
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
 }
 
 func (t *TestWorker) getRandomCustomerID() uint64 {
