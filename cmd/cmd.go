@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/5kbpers/square-test/pkg/test"
 	"github.com/spf13/cobra"
 )
@@ -26,10 +28,19 @@ func NewTestCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			db, err := test.NewDB(dsn, concurrency)
+			if err != nil {
+				return err
+			}
+			ctx := context.Background()
 			errCh := make(chan error, concurrency)
 			workers := make([]*test.SquareTestWorker, 0, concurrency)
 			for i := 0; i < concurrency; i++ {
-				t, err := test.NewSquareTestWorker(i, dsn)
+				conn, err := db.GetConn(ctx)
+				if err != nil {
+					return err
+				}
+				t, err := test.NewSquareTestWorker(ctx, conn, i, dsn)
 				if err != nil {
 					return err
 				}

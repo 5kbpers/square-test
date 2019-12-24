@@ -1,11 +1,12 @@
 package test
 
 import (
+	"context"
 	"database/sql"
 	"math/rand"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
@@ -13,18 +14,16 @@ import (
 type SquareTestWorker struct {
 	workerID       int
 	nextCustomerID uint64
-	db             *sql.DB
+	conn           *Conn
 	numGen         *rand.Rand
+	ctx            context.Context
 }
 
-func NewSquareTestWorker(workerID int, dsn string) (*SquareTestWorker, error) {
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
-	}
+func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string) (*SquareTestWorker, error) {
 	return &SquareTestWorker{
+		ctx:      ctx,
 		workerID: workerID,
-		db:       db,
+		conn:     conn,
 		numGen:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}, nil
 }
@@ -49,14 +48,14 @@ func (t *SquareTestWorker) Run(operationCount int) error {
 		}
 		if err != nil {
 			log.Error("Run request failed", zap.Uint64("requestID", req+1), zap.Error(err))
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
 }
 
 func (t *SquareTestWorker) Close() error {
-	return t.db.Close()
+	return t.conn.Close()
 }
 
 func (t *SquareTestWorker) request1() error {
@@ -65,9 +64,9 @@ func (t *SquareTestWorker) request1() error {
 		id := t.nextCustomerID
 		t.nextCustomerID++
 		name := "customer" + string(id)
-		_, err := t.db.Exec(InsertCustomerSQL, id, name)
+		err := t.conn.execQuery(t.ctx, InsertCustomerSQL, id, name)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -81,21 +80,21 @@ func (t *SquareTestWorker) request2() error {
 			customerID = t.getRandomCustomerID()
 			counterpartyID = t.getRandomCustomerID()
 		}
-		tx, err := t.db.Begin()
+		tx, err := t.conn.beginTx(t.ctx)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		_, err = tx.Exec(InsertMovementSQL, "SENDER", customerID, counterpartyID, t.numGen.Int63(), t.numGen.Int63())
 		if err != nil {
-			return tx.Rollback()
+			return errors.Trace(tx.Rollback())
 		}
 		_, err = tx.Exec(InsertMovementSQL, "RECIPIENT", counterpartyID, customerID, t.numGen.Int63(), t.numGen.Int63())
 		if err != nil {
-			return tx.Rollback()
+			return errors.Trace(tx.Rollback())
 		}
 		err = tx.Commit()
 		if err != nil {
-			return tx.Rollback()
+			return errors.Trace(tx.Rollback())
 		}
 	}
 	return nil
@@ -109,13 +108,13 @@ func (t *SquareTestWorker) request3() error {
 			customerID = t.getRandomCustomerID()
 			counterpartyID = t.getRandomCustomerID()
 		}
-		_, err := t.db.Query(QueryCustomerMovementsSQL, customerID)
+		err := t.conn.execQuery(t.ctx, QueryCustomerMovementsSQL, customerID)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
-		_, err = t.db.Query(QueryCustomerMovementsSQL, counterpartyID)
+		err = t.conn.execQuery(t.ctx, QueryCustomerMovementsSQL, counterpartyID)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -123,12 +122,16 @@ func (t *SquareTestWorker) request3() error {
 
 func (t *SquareTestWorker) request4() error {
 	log.Info("Run request4", zap.Int("workerID", t.workerID))
-	_, err := t.db.Exec("set @@tidb_replica_read='follower'")
+	err := t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
-	_, err = t.db.Query(QueryAllMovementsSQL)
-	return err
+	err = t.conn.execQuery(t.ctx, QueryAllMovementsSQL)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='leader'")
+	return errors.Trace(err)
 }
 
 func (t *SquareTestWorker) getRandomCustomerID() uint64 {
