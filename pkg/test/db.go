@@ -25,10 +25,10 @@ var (
 		"counterparty_id BIGINT NOT NULL," +
 		"role VARCHAR(20) NOT NULL," +
 		"amount_cents BIGINT NOT NULL," +
-		"PRIMARY KEY (id)" +
-		");" +
-		"ALTER TABLE movements ADD INDEX idx_customer_id (customer_id);" +
-		"ALTER TABLE movements ADD INDEX idx_created_at (role, created_at);"
+		"PRIMARY KEY (id)," +
+		"INDEX idx_customer_id (customer_id)," +
+		"INDEX idx_created_at (role, created_at)" +
+		");"
 )
 
 var (

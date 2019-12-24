@@ -17,6 +17,7 @@ type TestWorker struct {
 	conn           *Conn
 	numGen         *rand.Rand
 	ctx            context.Context
+	opCount        int
 }
 
 func NewSquareTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string) (*TestWorker, error) {
@@ -35,6 +36,7 @@ func (t *TestWorker) Run(operationCount int) error {
 		return err
 	}
 	for i := 0; i < operationCount; i++ {
+		t.opCount++
 		req := t.numGen.Uint64() % 4
 		switch req {
 		case 0:
@@ -59,7 +61,7 @@ func (t *TestWorker) Close() error {
 }
 
 func (t *TestWorker) request1() error {
-	log.Info("Run request1", zap.Int("workerID", t.workerID))
+	log.Info("Run request1", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
 	for i := 0; i < 50; i++ {
 		id := t.nextCustomerID
 		t.nextCustomerID++
@@ -73,7 +75,7 @@ func (t *TestWorker) request1() error {
 }
 
 func (t *TestWorker) request2() error {
-	log.Info("Run request2", zap.Int("workerID", t.workerID))
+	log.Info("Run request2", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
 	for i := 0; i < 10; i++ {
 		var customerID, counterpartyID uint64
 		for customerID == counterpartyID {
@@ -101,7 +103,7 @@ func (t *TestWorker) request2() error {
 }
 
 func (t *TestWorker) request3() error {
-	log.Info("Run request3", zap.Int("workerID", t.workerID))
+	log.Info("Run request3", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
 	for i := 0; i < 50; i++ {
 		var customerID, counterpartyID uint64
 		for customerID == counterpartyID {
@@ -121,7 +123,7 @@ func (t *TestWorker) request3() error {
 }
 
 func (t *TestWorker) request4() error {
-	log.Info("Run request4", zap.Int("workerID", t.workerID))
+	log.Info("Run request4", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
 	err := t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
 	if err != nil {
 		return errors.Trace(err)
