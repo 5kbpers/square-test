@@ -40,16 +40,16 @@ func (t *TestWorker) Run(operationCount int) error {
 	}
 	for i := 0; i < operationCount; i++ {
 		t.opCount++
-		req := t.numGen.Uint64() % 100
+		req := t.numGen.Uint64() % 218
 		switch {
-		case req < 8:
+		case req < 1:
 			err = withRetry(t.request1, 10)
-		case req >= 8 && req < 16:
+		case req >= 1 && req < 3:
 			err = withRetry(t.request2, 10)
-		case req >= 16 && req < 97:
-			err = withRetry(t.request3, 10)
-		case req >= 97:
+		case req >= 3 && req < 18:
 			err = withRetry(t.request4, 10)
+		case req >= 18 :
+			err = withRetry(t.request3, 10)
 		}
 		if err != nil {
 			log.Error("Run request failed", zap.Uint64("requestID", req+1), zap.Error(err), zap.Int("workerID", t.workerID))
