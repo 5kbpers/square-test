@@ -12,7 +12,7 @@ import (
 )
 
 type TestWorker struct {
-	workerID     int
+	workerID     uint64
 	customerIDs  []int64
 	conn         *Conn
 	numGen       *rand.Rand
@@ -22,7 +22,7 @@ type TestWorker struct {
 	req4Follower bool
 }
 
-func NewTestWorker(ctx context.Context, conn *Conn, workerID int, req3Follower bool, req4Follower bool) (*TestWorker, error) {
+func NewTestWorker(ctx context.Context, conn *Conn, workerID uint64, req3Follower bool, req4Follower bool) (*TestWorker, error) {
 	return &TestWorker{
 		ctx:          ctx,
 		workerID:     workerID,
@@ -33,38 +33,38 @@ func NewTestWorker(ctx context.Context, conn *Conn, workerID int, req3Follower b
 	}, nil
 }
 
-func (t *TestWorker) Run(operationCount int) error {
+func (t *TestWorker) Run(operationCount, req1, req2, req3, req4 uint64) error {
 	err := withRetry(t.request1, 10)
 	if err != nil {
 		return err
 	}
-	for i := 0; i < operationCount; i++ {
+	for i := uint64(0); i < operationCount; i++ {
 		t.opCount++
-		req := t.numGen.Uint64() % 218
+		req := t.numGen.Uint64() % (req1 + req2 + req3 + req4)
 		switch {
-		case req < 1:
+		case req < req1:
 			err = withRetry(t.request1, 10)
-		case req >= 1 && req < 3:
+		case req >= req1 && req < req1+req2:
 			err = withRetry(t.request2, 10)
-		case req >= 3 && req < 18:
+		case req >= req1+req2 && req < req1+req2+req3:
 			err = withRetry(t.request4, 10)
-		case req >= 18 :
+		case req >= req1+req2+req3:
 			err = withRetry(t.request3, 10)
 		}
 		if err != nil {
-			log.Error("Run request failed", zap.Uint64("requestID", req+1), zap.Error(err), zap.Int("workerID", t.workerID))
+			log.Error("Run request failed", zap.Uint64("requestID", req+1), zap.Error(err), zap.Uint64("workerID", t.workerID))
 			return errors.Trace(err)
 		}
 	}
 	return nil
 }
 
-func (t *TestWorker) Load(operationCount int) error {
+func (t *TestWorker) Load(operationCount uint64) error {
 	err := t.conn.disableAutocommit(t.ctx)
 	if err != nil {
 		return err
 	}
-	for i := 0; i < operationCount; i++ {
+	for i := uint64(0); i < operationCount; i++ {
 		err = withRetry(func() error {
 			name := "customer"
 			rs, err := t.conn.execQueryNoCommit(t.ctx, InsertCustomerSQL, name)
@@ -78,7 +78,7 @@ func (t *TestWorker) Load(operationCount int) error {
 			t.customerIDs = append(t.customerIDs, lastInsertID)
 			return nil
 		}, 10)
-		log.Info("Create customer", zap.Int("workerID", t.workerID), zap.Int("count", i+1))
+		log.Info("Create customer", zap.Uint64("workerID", t.workerID), zap.Uint64("count", i+1))
 		if err != nil {
 			log.Error("Create customers failed", zap.Error(err))
 			return errors.Trace(err)
@@ -90,7 +90,7 @@ func (t *TestWorker) Load(operationCount int) error {
 		return errors.Trace(err)
 	}
 
-	for i := 0; i < operationCount; i++ {
+	for i := uint64(0); i < operationCount; i++ {
 		for j := 0; j < 1000; j++ {
 			err := withRetry(func() error {
 				var customerID, counterpartyID int64
@@ -110,7 +110,7 @@ func (t *TestWorker) Load(operationCount int) error {
 				return errors.Trace(err)
 			}
 		}
-		log.Info("Create movements", zap.Int("workerID", t.workerID), zap.Int("count", (i+1)*1000))
+		log.Info("Create movements", zap.Uint64("workerID", t.workerID), zap.Uint64("count", (i+1)*1000))
 		err = t.conn.commit(t.ctx)
 		if err != nil {
 			log.Error("Create movements failed", zap.Error(err))
@@ -125,7 +125,7 @@ func (t *TestWorker) Close() error {
 }
 
 func (t *TestWorker) request1() error {
-	log.Info("Run request1", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
+	log.Info("Run request1", zap.Uint64("workerID", t.workerID), zap.Int("count", t.opCount))
 	for i := 0; i < 50; i++ {
 		name := "customer"
 		rs, err := t.conn.execQuery(t.ctx, InsertCustomerSQL, name)
@@ -142,7 +142,7 @@ func (t *TestWorker) request1() error {
 }
 
 func (t *TestWorker) request2() error {
-	log.Info("Run request2", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
+	log.Info("Run request2", zap.Uint64("workerID", t.workerID), zap.Int("count", t.opCount))
 	for i := 0; i < 10; i++ {
 		var customerID, counterpartyID int64
 		for customerID == counterpartyID {
@@ -162,7 +162,7 @@ func (t *TestWorker) request2() error {
 }
 
 func (t *TestWorker) request3() error {
-	log.Info("Run request3", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
+	log.Info("Run request3", zap.Uint64("workerID", t.workerID), zap.Int("count", t.opCount))
 	var err error
 	if t.req3Follower {
 		_, err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
@@ -195,7 +195,7 @@ func (t *TestWorker) request3() error {
 }
 
 func (t *TestWorker) request4() error {
-	log.Info("Run request4", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
+	log.Info("Run request4", zap.Uint64("workerID", t.workerID), zap.Int("count", t.opCount))
 	var err error
 	if t.req4Follower {
 		_, err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
@@ -217,7 +217,7 @@ func (t *TestWorker) request4() error {
 }
 
 func (t *TestWorker) getRandomCustomerID() int64 {
-	return t.customerIDs[t.numGen.Int()%len(t.customerIDs)]
+	return t.customerIDs[int(t.numGen.Uint32())%len(t.customerIDs)]
 }
 
 type retryableFunc func() error
