@@ -10,11 +10,11 @@ import (
 
 func main() {
 	command := &cobra.Command{
-		Use:   "test",
+		Use:              "test",
 		TraverseChildren: true,
 		SilenceUsage:     true,
 	}
-	command.AddCommand(cmd.NewRunCommand())
+	command.AddCommand(cmd.NewRunCommand(), cmd.NewLoadCommand())
 	command.SetArgs(os.Args[1:])
 	if err := command.Execute(); err != nil {
 		command.Println(errors.ErrorStack(err))

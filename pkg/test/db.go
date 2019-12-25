@@ -32,7 +32,7 @@ var (
 )
 
 var (
-	InsertCustomerSQL = "INSERT INTO customers (id, name) VALUES (?, ?);"
+	InsertCustomerSQL = "INSERT INTO customers (name) VALUES (?);"
 	InsertMovementSQL = "INSERT INTO movements (role, customer_id, counterparty_id, payment_id, amount_cents) VALUES (?, ?, ?, ?, ?);"
 
 	QueryCustomerMovementsSQL = "SELECT * FROM movements WHERE customer_id = ? ORDER BY created_at desc LIMIT 100;"
@@ -44,9 +44,9 @@ type DB struct {
 }
 
 type Conn struct {
-	stmtCache map[string]*sql.Stmt
-	conn      *sql.Conn
-	db        *sql.DB
+	stmtCache  map[string]*sql.Stmt
+	conn       *sql.Conn
+	db         *sql.DB
 }
 
 func NewDB(dsn string, concurrency int) (*DB, error) {
@@ -67,9 +67,9 @@ func (db *DB) GetConn(ctx context.Context) (*Conn, error) {
 		return nil, err
 	}
 	return &Conn{
-		stmtCache: make(map[string]*sql.Stmt),
-		conn:      conn,
-		db:        db.db,
+		stmtCache:  make(map[string]*sql.Stmt),
+		conn:       conn,
+		db:         db.db,
 	}, nil
 }
 
@@ -108,26 +108,39 @@ func (conn *Conn) clearCacheIfFailed(query string, err error) {
 	delete(conn.stmtCache, query)
 }
 
-func (conn *Conn) ExecQuery(ctx context.Context, query string, args ...interface{}) error {
+func (conn *Conn) execQuery(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	err := conn.disableAutocommit(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stmt, err := conn.getAndCacheStmt(ctx, query)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = stmt.ExecContext(ctx, args...)
+	rs, err := stmt.ExecContext(ctx, args...)
 	conn.clearCacheIfFailed(query, err)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = conn.commit(ctx)
 	if err != nil {
-		return err
+		return rs, err
 	}
 	err = conn.enableAutocommit(ctx)
-	return err
+	return rs, err
+}
+
+func (conn *Conn) execQueryNoCommit(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	stmt, err := conn.getAndCacheStmt(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	rs, err := stmt.ExecContext(ctx, args...)
+	conn.clearCacheIfFailed(query, err)
+	if err != nil {
+		return nil, err
+	}
+	return rs, err
 }
 
 func (conn *Conn) disableAutocommit(ctx context.Context) error {
