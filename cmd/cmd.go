@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewTestCommand() *cobra.Command {
+func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "test",
+		Use:   "run",
 		Short: "run test",
 		RunE: func(command *cobra.Command, _ []string) error {
 			concurrency, err := command.Flags().GetInt("concurrency")

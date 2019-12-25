@@ -23,10 +23,10 @@ type TestWorker struct {
 
 func NewTestWorker(ctx context.Context, conn *Conn, workerID int, dsn string, followerRead bool) (*TestWorker, error) {
 	return &TestWorker{
-		ctx:      ctx,
-		workerID: workerID,
-		conn:     conn,
-		numGen:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		ctx:          ctx,
+		workerID:     workerID,
+		conn:         conn,
+		numGen:       rand.New(rand.NewSource(time.Now().UnixNano())),
 		followerRead: followerRead,
 	}, nil
 }
@@ -68,7 +68,7 @@ func (t *TestWorker) request1() error {
 		id := t.nextCustomerID
 		t.nextCustomerID++
 		name := "customer" + string(id)
-		err := t.conn.execQuery(t.ctx, InsertCustomerSQL, id, name)
+		err := t.conn.ExecQuery(t.ctx, InsertCustomerSQL, id, name)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -84,21 +84,13 @@ func (t *TestWorker) request2() error {
 			customerID = t.getRandomCustomerID()
 			counterpartyID = t.getRandomCustomerID()
 		}
-		tx, err := t.conn.beginTx(t.ctx)
+		err := t.conn.ExecQuery(t.ctx, InsertMovementSQL, "SENDER", customerID, counterpartyID, t.numGen.Int63(), t.numGen.Int63())
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
-		_, err = tx.Exec(InsertMovementSQL, "SENDER", customerID, counterpartyID, t.numGen.Int63(), t.numGen.Int63())
+		err = t.conn.ExecQuery(t.ctx, InsertMovementSQL, "RECIPIENT", counterpartyID, customerID, t.numGen.Int63(), t.numGen.Int63())
 		if err != nil {
-			return errors.Trace(tx.Rollback())
-		}
-		_, err = tx.Exec(InsertMovementSQL, "RECIPIENT", counterpartyID, customerID, t.numGen.Int63(), t.numGen.Int63())
-		if err != nil {
-			return errors.Trace(tx.Rollback())
-		}
-		err = tx.Commit()
-		if err != nil {
-			return errors.Trace(tx.Rollback())
+			return err
 		}
 	}
 	return nil
@@ -112,11 +104,11 @@ func (t *TestWorker) request3() error {
 			customerID = t.getRandomCustomerID()
 			counterpartyID = t.getRandomCustomerID()
 		}
-		err := t.conn.execQuery(t.ctx, QueryCustomerMovementsSQL, customerID)
+		err := t.conn.ExecQuery(t.ctx, QueryCustomerMovementsSQL, customerID)
 		if err != nil {
 			return errors.Trace(err)
 		}
-		err = t.conn.execQuery(t.ctx, QueryCustomerMovementsSQL, counterpartyID)
+		err = t.conn.ExecQuery(t.ctx, QueryCustomerMovementsSQL, counterpartyID)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -128,17 +120,17 @@ func (t *TestWorker) request4() error {
 	log.Info("Run request4", zap.Int("workerID", t.workerID), zap.Int("count", t.opCount))
 	var err error
 	if t.followerRead {
-		err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='follower'")
+		err = t.conn.ExecQuery(t.ctx, "set @@tidb_replica_read='follower'")
 		if err != nil {
 			return errors.Trace(err)
 		}
 	}
-	err = t.conn.execQuery(t.ctx, QueryAllMovementsSQL)
+	err = t.conn.ExecQuery(t.ctx, QueryAllMovementsSQL)
 	if err != nil {
 		return errors.Trace(err)
 	}
 	if t.followerRead {
-		err = t.conn.execQuery(t.ctx, "set @@tidb_replica_read='leader'")
+		err = t.conn.ExecQuery(t.ctx, "set @@tidb_replica_read='leader'")
 		if err != nil {
 			return errors.Trace(err)
 		}

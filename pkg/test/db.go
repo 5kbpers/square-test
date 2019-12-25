@@ -108,18 +108,41 @@ func (conn *Conn) clearCacheIfFailed(query string, err error) {
 	delete(conn.stmtCache, query)
 }
 
-func (conn *Conn) execQuery(ctx context.Context, query string, args ...interface{}) error {
+func (conn *Conn) ExecQuery(ctx context.Context, query string, args ...interface{}) error {
+	err := conn.disableAutocommit(ctx)
+	if err != nil {
+		return err
+	}
 	stmt, err := conn.getAndCacheStmt(ctx, query)
 	if err != nil {
 		return err
 	}
 	_, err = stmt.ExecContext(ctx, args...)
 	conn.clearCacheIfFailed(query, err)
+	if err != nil {
+		return err
+	}
+	err = conn.commit(ctx)
+	if err != nil {
+		return err
+	}
+	err = conn.enableAutocommit(ctx)
 	return err
 }
 
-func (conn *Conn) beginTx(ctx context.Context) (*sql.Tx, error) {
-	return conn.conn.BeginTx(ctx, nil)
+func (conn *Conn) disableAutocommit(ctx context.Context) error {
+	_, err := conn.conn.ExecContext(ctx, "set session autocommit=0;")
+	return err
+}
+
+func (conn *Conn) enableAutocommit(ctx context.Context) error {
+	_, err := conn.conn.ExecContext(ctx, "set session autocommit=1;")
+	return err
+}
+
+func (conn *Conn) commit(ctx context.Context) error {
+	_, err := conn.conn.ExecContext(ctx, "commit;")
+	return err
 }
 
 func (conn *Conn) Close() error {
