@@ -22,6 +22,16 @@ type TestWorker struct {
 	req4Follower bool
 }
 
+type TestResult struct {
+	Err error
+	Req [4]RequestResult
+}
+
+type RequestResult struct {
+	Count int
+	Take  time.Duration
+}
+
 func NewTestWorker(ctx context.Context, conn *Conn, workerID uint64, req3Follower bool, req4Follower bool) (*TestWorker, error) {
 	return &TestWorker{
 		ctx:          ctx,
@@ -33,30 +43,42 @@ func NewTestWorker(ctx context.Context, conn *Conn, workerID uint64, req3Followe
 	}, nil
 }
 
-func (t *TestWorker) Run(operationCount, req1, req2, req3, req4 uint64) error {
+func (t *TestWorker) Run(operationCount, req1, req2, req3, req4 uint64) *TestResult {
+	res := new(TestResult)
 	err := withRetry(t.request1, 10)
 	if err != nil {
-		return err
+		res.Err = err
+		return res
 	}
 	for i := uint64(0); i < operationCount; i++ {
 		t.opCount++
+		startTime := time.Now()
 		req := t.numGen.Uint64() % (req1 + req2 + req3 + req4)
 		switch {
 		case req < req1:
 			err = withRetry(t.request1, 10)
+			res.Req[0].Count++
+			res.Req[0].Take += time.Since(startTime)
 		case req >= req1 && req < req1+req2:
 			err = withRetry(t.request2, 10)
+			res.Req[1].Count++
+			res.Req[1].Take += time.Since(startTime)
 		case req >= req1+req2 && req < req1+req2+req3:
 			err = withRetry(t.request4, 10)
+			res.Req[2].Count++
+			res.Req[2].Take += time.Since(startTime)
 		case req >= req1+req2+req3:
 			err = withRetry(t.request3, 10)
+			res.Req[3].Count++
+			res.Req[3].Take += time.Since(startTime)
 		}
 		if err != nil {
 			log.Error("Run request failed", zap.Uint64("requestID", req+1), zap.Error(err), zap.Uint64("workerID", t.workerID))
-			return errors.Trace(err)
+			res.Err = err
+			return res
 		}
 	}
-	return nil
+	return res
 }
 
 func (t *TestWorker) Load(operationCount uint64) error {

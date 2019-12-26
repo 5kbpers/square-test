@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"context"
+	"time"
 
 	"github.com/5kbpers/test1/pkg/test"
+	"github.com/pingcap/log"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 func NewRunCommand() *cobra.Command {
@@ -53,7 +56,7 @@ func NewRunCommand() *cobra.Command {
 				return err
 			}
 			ctx := context.Background()
-			errCh := make(chan error, concurrency)
+			resCh := make(chan *test.TestResult, concurrency)
 			workers := make([]*test.TestWorker, 0, concurrency)
 			for i := uint64(0); i < concurrency; i++ {
 				conn, err := db.GetConn(ctx)
@@ -66,7 +69,7 @@ func NewRunCommand() *cobra.Command {
 				}
 				workers = append(workers, t)
 				go func(worker *test.TestWorker) {
-					errCh <- worker.Run(operationCount / concurrency, req1, req2, req3, req4)
+					resCh <- worker.Run(operationCount/concurrency, req1, req2, req3, req4)
 				}(t)
 			}
 			defer func() {
@@ -74,10 +77,27 @@ func NewRunCommand() *cobra.Command {
 					_ = worker.Close()
 				}
 			}()
+			resSum := new(test.TestResult)
 			for i := uint64(0); i < concurrency; i++ {
-				err = <-errCh
-				if err != nil {
-					return err
+				res := <-resCh
+				if res.Err != nil {
+					return res.Err
+				}
+				for j, req := range res.Req {
+					resSum.Req[j].Count += req.Count
+					resSum.Req[j].Take += req.Take
+				}
+			}
+			log.Info("Test finished")
+			for i, req := range resSum.Req {
+				if req.Count > 0 {
+					log.Info(
+						"Request summary",
+						zap.Int("reqID", i+1),
+						zap.Int("count", req.Count),
+						zap.Duration("take", req.Take),
+						zap.Duration("avgTake", req.Take/time.Duration(req.Count)),
+					)
 				}
 			}
 			return nil
