@@ -13,7 +13,7 @@ import (
 
 type TestWorker struct {
 	workerID     uint64
-	customerIDs  []int64
+	lastInsertID int64
 	conn         *Conn
 	numGen       *rand.Rand
 	ctx          context.Context
@@ -45,9 +45,14 @@ func NewTestWorker(ctx context.Context, conn *Conn, workerID uint64, req3Followe
 
 func (t *TestWorker) Run(operationCount, req1, req2, req3, req4 uint64) *TestResult {
 	res := new(TestResult)
-	err := withRetry(t.request1, 10)
+	rs, err := t.conn.execQuery(t.ctx, InsertCustomerSQL, "customer")
 	if err != nil {
-		res.Err = err
+		res.Err = errors.Trace(err)
+		return res
+	}
+	t.lastInsertID, err = rs.LastInsertId()
+	if err != nil {
+		res.Err = errors.Trace(err)
 		return res
 	}
 	for i := uint64(0); i < operationCount; i++ {
@@ -64,11 +69,11 @@ func (t *TestWorker) Run(operationCount, req1, req2, req3, req4 uint64) *TestRes
 			res.Req[1].Count++
 			res.Req[1].Take += time.Since(startTime)
 		case req >= req1+req2 && req < req1+req2+req3:
-			err = withRetry(t.request4, 10)
+			err = withRetry(t.request3, 10)
 			res.Req[2].Count++
 			res.Req[2].Take += time.Since(startTime)
 		case req >= req1+req2+req3:
-			err = withRetry(t.request3, 10)
+			err = withRetry(t.request4, 10)
 			res.Req[3].Count++
 			res.Req[3].Take += time.Since(startTime)
 		}
@@ -94,10 +99,10 @@ func (t *TestWorker) Load(operationCount uint64) error {
 				return errors.Trace(err)
 			}
 			lastInsertID, err := rs.LastInsertId()
+			t.lastInsertID = lastInsertID
 			if err != nil {
 				return errors.Trace(err)
 			}
-			t.customerIDs = append(t.customerIDs, lastInsertID)
 			return nil
 		}, 10)
 		log.Info("Create customer", zap.Uint64("workerID", t.workerID), zap.Uint64("count", i+1))
@@ -158,7 +163,7 @@ func (t *TestWorker) request1() error {
 		if err != nil {
 			return errors.Trace(err)
 		}
-		t.customerIDs = append(t.customerIDs, lastInsertID)
+		t.lastInsertID = lastInsertID
 	}
 	return nil
 }
@@ -239,7 +244,7 @@ func (t *TestWorker) request4() error {
 }
 
 func (t *TestWorker) getRandomCustomerID() int64 {
-	return t.customerIDs[int(t.numGen.Uint32())%len(t.customerIDs)]
+	return t.numGen.Int63() % t.lastInsertID
 }
 
 type retryableFunc func() error
